@@ -26,10 +26,13 @@ use clap::Parser;
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tracing::{info, warn};
-use wayland_client::{globals::registry_queue_init, Connection};
+use wayland_client::{
+    globals::{registry_queue_init, GlobalList},
+    Connection, EventQueue,
+};
 
 mod config;
 mod frame;
@@ -104,10 +107,14 @@ fn main() -> Result<()> {
     info!(frame_position = %format!("{:.3}", frame_pos), "current frame position");
 
     // ── Wayland setup ───────────────────────────────────────────────────────
-    let conn = Connection::connect_to_env()
-        .context("connecting to Wayland compositor (is WAYLAND_DISPLAY set?)")?;
-    let (globals, mut event_queue) = registry_queue_init(&conn)
-        .context("initialising Wayland registry")?;
+    // Launched from the compositor's own config, ornatus races the compositor's
+    // startup: the socket may not be listening yet, and the required globals may
+    // not be advertised at the first registry snapshot. Both are retried with a
+    // bounded backoff so a slow boot no longer aborts the daemon before the event
+    // loop starts.
+    let conn = connect_with_retry(WAYLAND_STARTUP_TIMEOUT)?;
+    let (globals, mut event_queue) =
+        registry_queue_init_with_retry(&conn, WAYLAND_STARTUP_TIMEOUT)?;
     let qh = event_queue.handle();
 
     let mut app = WaylandApp::new(
@@ -191,6 +198,68 @@ fn main() -> Result<()> {
 
     info!("shutdown complete");
     Ok(())
+}
+
+/// How long to wait for the compositor to become ready when ornatus is exec'd
+/// from the compositor's own config and wins the startup race.
+const WAYLAND_STARTUP_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Backoff between startup readiness polls.
+const WAYLAND_STARTUP_BACKOFF: Duration = Duration::from_millis(100);
+
+/// The globals `WaylandApp::new` binds unconditionally. If any is missing the
+/// daemon can't function, so we wait for all three before constructing state.
+const REQUIRED_GLOBALS: [&str; 3] = ["wl_compositor", "zwlr_layer_shell_v1", "wl_shm"];
+
+/// Connect to the compositor, retrying until `timeout` elapses. Even with
+/// `WAYLAND_DISPLAY` set, the socket may not be listening yet on the earliest
+/// boots; on timeout the final error propagates unchanged.
+fn connect_with_retry(timeout: Duration) -> Result<Connection> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match Connection::connect_to_env() {
+            Ok(conn) => return Ok(conn),
+            Err(err) if Instant::now() < deadline => {
+                warn!(error = %err, "Wayland connect failed; retrying");
+                std::thread::sleep(WAYLAND_STARTUP_BACKOFF);
+            }
+            Err(err) => {
+                return Err(err)
+                    .context("connecting to Wayland compositor (is WAYLAND_DISPLAY set?)");
+            }
+        }
+    }
+}
+
+/// Initialise the Wayland registry, retrying until every entry in
+/// `REQUIRED_GLOBALS` is advertised or `timeout` elapses. Each attempt takes a
+/// fresh registry snapshot, so globals the compositor advertises late are
+/// eventually seen. On timeout the most recent snapshot is returned regardless,
+/// letting `WaylandApp::new` surface the precise "<interface> not advertised"
+/// error it would have produced without the retry.
+fn registry_queue_init_with_retry(
+    conn: &Connection,
+    timeout: Duration,
+) -> Result<(GlobalList, EventQueue<WaylandApp>)> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let (globals, event_queue) =
+            registry_queue_init(conn).context("initialising Wayland registry")?;
+        if required_globals_present(&globals) || Instant::now() >= deadline {
+            return Ok((globals, event_queue));
+        }
+        warn!("required Wayland globals not yet advertised; retrying");
+        std::thread::sleep(WAYLAND_STARTUP_BACKOFF);
+    }
+}
+
+/// True once every interface in `REQUIRED_GLOBALS` appears in the snapshot.
+fn required_globals_present(globals: &GlobalList) -> bool {
+    globals.contents().with_list(|list| {
+        REQUIRED_GLOBALS
+            .iter()
+            .all(|needed| list.iter().any(|g| g.interface == *needed))
+    })
 }
 
 /// Read the PID file, send SIGUSR1 to that process, exit.
