@@ -12,7 +12,9 @@ terminal, launcher and notification daemon follow the sky.
 
 - A wlroots-based Wayland compositor (`wlr-layer-shell-unstable-v1`)
 - Rust 2024 edition toolchain
-- `XDG_RUNTIME_DIR` set (used for the PID file)
+- Build-time system libraries `libwayland-dev` and `libxkbcommon-dev`
+  (Debian/Ubuntu names; located via `pkg-config` while compiling)
+- `XDG_RUNTIME_DIR` set at runtime (used for the PID file)
 
 ## Build
 
@@ -33,6 +35,49 @@ Logging uses `tracing` and defaults to `ornatus=info`. Override with
 `RUST_LOG`, e.g. `RUST_LOG=ornatus=debug ornatus`.
 
 Signals: `SIGUSR1` refreshes, `SIGTERM`/`SIGINT` shut down cleanly.
+
+## Running at startup
+
+`ornatus` is a foreground daemon; start it once per session from your
+compositor's config. It draws to a `wlr-layer-shell` background surface, so it
+must run *after* the compositor is up — but it tolerates being launched early:
+if the Wayland socket or the compositor's required globals aren't ready yet, it
+retries for up to two seconds before giving up, so racing the compositor's own
+startup is safe.
+
+**Sway** — `~/.config/sway/config`:
+
+```
+exec ornatus
+```
+
+**Hyprland** — `~/.config/hypr/hyprland.conf`:
+
+```
+exec-once = ornatus
+```
+
+**River** — `~/.config/river/init`:
+
+```
+riverctl spawn ornatus
+```
+
+### Alternative: systemd user service
+
+If you drive your session with systemd and reach `graphical-session.target`, a
+unit is provided in [`contrib/ornatus.service`](contrib/ornatus.service):
+
+```sh
+install -Dm644 contrib/ornatus.service ~/.config/systemd/user/ornatus.service
+systemctl --user enable --now ornatus.service
+```
+
+It is ordered `After=graphical-session.target` and reloads (sends `SIGUSR1`) on
+`systemctl --user reload ornatus`. Your compositor must export `WAYLAND_DISPLAY`
+into the systemd user environment for this to work — many do so automatically,
+otherwise run `systemctl --user import-environment WAYLAND_DISPLAY` once the
+compositor is running.
 
 ## Configuration
 
@@ -82,10 +127,13 @@ signalled best-effort via `pkill -SIGUSR1 kitty`, `makoctl reload` and
 
 ## Network use
 
-With `location.source = "auto"`, ornatus makes a single HTTPS request to
-`https://ipapi.co/json/` to resolve coordinates, cached under
-`$XDG_CACHE_HOME/ornatus/location.json`. Sun math is computed locally. Set a
-fixed location to avoid all network access.
+With `location.source = "auto"`, ornatus resolves coordinates from
+`https://ipapi.co/json/` and caches them under
+`$XDG_CACHE_HOME/ornatus/location.json`. The cache has a 24-hour TTL: within a
+day the cached value is reused with no network access, and it is also re-fetched
+on resume from suspend (in case you have moved). If a fetch fails, ornatus falls
+back to the last cached value, so it keeps working offline once primed. Sun math
+is always computed locally. Set a fixed location to avoid all network access.
 
 ## License
 

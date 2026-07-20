@@ -1,0 +1,28 @@
+# systemd user unit for ornatus.
+#
+# Install:
+#   install -Dm644 contrib/ornatus.service ~/.config/systemd/user/ornatus.service
+#   systemctl --user enable --now ornatus.service
+#
+# Your compositor must export WAYLAND_DISPLAY (and XDG_RUNTIME_DIR) into the
+# systemd user environment and reach graphical-session.target. Many session
+# setups do this automatically; otherwise `systemctl --user import-environment
+# WAYLAND_DISPLAY` after the compositor starts.
+
+[Unit]
+Description=ornatus solar-gradient wallpaper and theme daemon
+Documentation=https://github.com/ppitchford/ornatus
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/ornatus
+# `--refresh` signals the running instance (SIGUSR1); triggered by
+# `systemctl --user reload ornatus`.
+ExecReload=%h/.local/bin/ornatus --refresh
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

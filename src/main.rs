@@ -14,6 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+//! ornatus — a Wayland-native solar-gradient wallpaper and theme daemon.
+//!
+//! Draws a gradient wallpaper to a `wlr-layer-shell` background surface,
+//! blending between 16 frames according to the sun's computed position, and
+//! flips a light/dark theme at the day/night boundary.
+//!
+//! Module layout:
+//!   - [`config`]   — filesystem paths, `config.toml` loading, defaults
+//!   - [`location`] — geographic coordinates (fixed, or cached IP geolocation)
+//!   - [`sun`]      — sunrise/sunset math and the continuous frame position
+//!   - [`frame`]    — on-demand JPEG decode and fixed-point frame blending
+//!   - [`theme`]    — the `current` marker, per-app symlinks, reload signals
+//!   - [`wayland`]  — layer-surface state and the periodic refresh loop
+//!
+//! `main` wires these together: resolve location, compute the sun, apply the
+//! initial theme, connect to the compositor, then run a calloop event loop that
+//! services Wayland events, a periodic refresh timer, and Unix signals.
+
 use anyhow::{anyhow, Context, Result};
 use calloop::{
     signals::{Signal, Signals},
@@ -235,7 +253,7 @@ fn connect_with_retry(timeout: Duration) -> Result<Connection> {
 /// `REQUIRED_GLOBALS` is advertised or `timeout` elapses. Each attempt takes a
 /// fresh registry snapshot, so globals the compositor advertises late are
 /// eventually seen. On timeout the most recent snapshot is returned regardless,
-/// letting `WaylandApp::new` surface the precise "<interface> not advertised"
+/// letting `WaylandApp::new` surface the precise `<interface> not advertised`
 /// error it would have produced without the retry.
 fn registry_queue_init_with_retry(
     conn: &Connection,
