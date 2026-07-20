@@ -17,12 +17,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # wayland-sys links the system libwayland (client_system feature),
-      # so the build script needs the headers and a pkg-config entry.
+      # Build scripts probe for these via pkg-config:
+      #   wayland-client, wayland-cursor (wayland-sys) -> libwayland-dev
+      #   xkbcommon (smithay-client-toolkit)           -> libxkbcommon-dev
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwayland-dev
+          sudo apt-get install -y libwayland-dev libxkbcommon-dev
 
       - uses: dtolnay/rust-toolchain@stable
         with:
