@@ -121,10 +121,10 @@ impl ThemeManager {
             }
 
             // Skip if the symlink already points at the right source
-            if let Ok(current_target) = fs::read_link(&dst) {
-                if current_target == src {
-                    continue;
-                }
+            if let Ok(current_target) = fs::read_link(&dst)
+                && current_target == src
+            {
+                continue;
             }
 
             if let Some(parent) = dst.parent() {

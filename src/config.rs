@@ -55,10 +55,10 @@ impl Paths {
 /// Resolve an XDG directory, falling back to `$HOME/<fallback>` if the
 /// env var is unset or empty.
 fn xdg_dir(var: &str, fallback: &str) -> Result<PathBuf> {
-    if let Ok(value) = env::var(var) {
-        if !value.is_empty() {
-            return Ok(PathBuf::from(value));
-        }
+    if let Ok(value) = env::var(var)
+        && !value.is_empty()
+    {
+        return Ok(PathBuf::from(value));
     }
     let home = env::var("HOME").context("HOME is not set")?;
     Ok(PathBuf::from(home).join(fallback))
