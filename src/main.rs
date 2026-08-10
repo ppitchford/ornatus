@@ -1,4 +1,4 @@
-// ornatus — solar-gradient wallpaper and theme daemon
+// ornatus — Wayland wallpaper and theme daemon
 // Copyright (C) 2026 Philipp Pitchford
 //
 // This program is free software: you can redistribute it and/or modify
@@ -14,19 +14,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! ornatus — a Wayland-native solar-gradient wallpaper and theme daemon.
+//! ornatus — a Wayland-native wallpaper and theme daemon.
 //!
-//! Draws a gradient wallpaper to a `wlr-layer-shell` background surface,
-//! blending between 16 frames according to the sun's computed position, and
-//! flips a light/dark theme at the day/night boundary.
+//! Draws a static image to a `wlr-layer-shell` background surface on every
+//! output, and flips a light/dark theme at the day/night boundary.
 //!
 //! Module layout:
-//!   - [`config`]   — filesystem paths, `config.toml` loading, defaults
-//!   - [`location`] — geographic coordinates (fixed, or cached IP geolocation)
-//!   - [`sun`]      — sunrise/sunset math and the continuous frame position
-//!   - [`frame`]    — on-demand JPEG decode and fixed-point frame blending
-//!   - [`theme`]    — the `current` marker, per-app symlinks, reload signals
-//!   - [`wayland`]  — layer-surface state and the periodic refresh loop
+//!   - [`config`]    — filesystem paths, `config.toml` loading, defaults
+//!   - [`location`]  — geographic coordinates (fixed, or cached IP geolocation)
+//!   - [`sun`]       — sunrise/sunset math for the day/night boundary
+//!   - [`wallpaper`] — JPEG decode, scale-to-cover, write into an SHM buffer
+//!   - [`theme`]     — the `current` marker, per-app symlinks, reload signals
+//!   - [`wayland`]   — layer-surface state and the periodic refresh loop
 //!
 //! `main` wires these together: resolve location, compute the sun, apply the
 //! initial theme, connect to the compositor, then run a calloop event loop that
@@ -53,19 +52,20 @@ use wayland_client::{
 };
 
 mod config;
-mod frame;
 mod location;
 mod sun;
 mod theme;
+mod wallpaper;
 mod wayland;
 
 use config::{Config, Paths};
 use location::LocationResolver;
 use sun::SunDay;
 use theme::{Theme, ThemeManager};
+use wallpaper::Wallpaper;
 use wayland::WaylandApp;
 
-/// Wayland-native solar-gradient wallpaper and theme daemon.
+/// Wayland-native wallpaper and theme daemon.
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Cli {
@@ -121,8 +121,8 @@ fn main() -> Result<()> {
     let theme_mgr  = ThemeManager::new(config.theme_dir.clone(), paths.config_dir.clone());
     theme_mgr.apply(Theme::from_is_daytime(is_daytime))?;
 
-    let frame_pos = sun::frame_at(coords, now);
-    info!(frame_position = %format!("{:.3}", frame_pos), "current frame position");
+    let wallpaper = Wallpaper::new(config.wallpaper.clone());
+    info!(path = %wallpaper.path().display(), "wallpaper source");
 
     // ── Wayland setup ───────────────────────────────────────────────────────
     // Launched from the compositor's own config, ornatus races the compositor's
@@ -138,19 +138,15 @@ fn main() -> Result<()> {
     let mut app = WaylandApp::new(
         &globals,
         &qh,
-        config.wallpaper_dir.clone(),
-        16,
+        wallpaper,
         coords,
         theme_mgr,
-        frame_pos,
         is_daytime,
         resolver,
         config.refresh_interval_secs,
-        )?;
+    )?;
 
-    // First roundtrip populates output info; then create layer surfaces.
-    event_queue.roundtrip(&mut app).context("initial Wayland roundtrip")?;
-    app.attach_to_outputs(&qh);
+    await_outputs(&mut event_queue, &mut app, &qh, OUTPUT_STARTUP_TIMEOUT)?;
 
     // ── Event loop ──────────────────────────────────────────────────────────
     let mut event_loop: EventLoop<WaylandApp> = EventLoop::try_new()
@@ -158,8 +154,8 @@ fn main() -> Result<()> {
     let handle      = event_loop.handle();
     let loop_signal = event_loop.get_signal();
 
-    // Periodic refresh: recompute frame position, redraw, switch theme on
-    // day/night crossings.
+    // Periodic refresh: recompute the sun and switch the theme on day/night
+    // crossings. The wallpaper is static and is not redrawn here.
     let refresh_interval = Duration::from_secs(config.refresh_interval_secs);
     handle
         .insert_source(
@@ -225,6 +221,13 @@ const WAYLAND_STARTUP_TIMEOUT: Duration = Duration::from_secs(2);
 /// Backoff between startup readiness polls.
 const WAYLAND_STARTUP_BACKOFF: Duration = Duration::from_millis(100);
 
+/// How long to wait for outputs to finish advertising themselves before
+/// entering the event loop.
+const OUTPUT_STARTUP_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// Backoff between output readiness roundtrips.
+const OUTPUT_STARTUP_BACKOFF: Duration = Duration::from_millis(20);
+
 /// The globals `WaylandApp::new` binds unconditionally. If any is missing the
 /// daemon can't function, so we wait for all three before constructing state.
 const REQUIRED_GLOBALS: [&str; 3] = ["wl_compositor", "zwlr_layer_shell_v1", "wl_shm"];
@@ -278,6 +281,56 @@ fn required_globals_present(globals: &GlobalList) -> bool {
             .iter()
             .all(|needed| list.iter().any(|g| g.interface == *needed))
     })
+}
+
+/// Pump the queue until every output the compositor has advertised owns a
+/// layer surface, or `timeout` elapses.
+///
+/// Surfaces are created reactively from `OutputHandler::new_output`, which SCTK
+/// only fires once an output's `wl_output::done` — and its xdg-output info, if
+/// the manager is bound — has arrived. A single roundtrip does not guarantee
+/// that on a slow boot, which is what used to leave an output permanently
+/// blank. This waits for the reactive path instead of racing it, then sweeps up
+/// anything still unattached.
+fn await_outputs(
+    event_queue: &mut EventQueue<WaylandApp>,
+    app:         &mut WaylandApp,
+    qh:          &wayland_client::QueueHandle<WaylandApp>,
+    timeout:     Duration,
+) -> Result<()> {
+    let start    = Instant::now();
+    let deadline = start + timeout;
+
+    loop {
+        event_queue.roundtrip(app).context("Wayland roundtrip")?;
+
+        if app.surface_count() > 0 && app.unattached_outputs() == 0 {
+            info!(
+                outputs    = app.surface_count(),
+                elapsed_ms = start.elapsed().as_millis(),
+                "all advertised outputs attached",
+            );
+            break;
+        }
+
+        if Instant::now() >= deadline {
+            warn!(
+                attached   = app.surface_count(),
+                unattached = app.unattached_outputs(),
+                elapsed_ms = start.elapsed().as_millis(),
+                "timed out waiting for outputs; sweeping",
+            );
+            break;
+        }
+
+        std::thread::sleep(OUTPUT_STARTUP_BACKOFF);
+    }
+
+    // Anything the reactive path missed. Warns when it has to act; an output
+    // that is still info-less is left for `new_output` to pick up once the
+    // event loop is running.
+    app.sweep_unattached(qh);
+    Ok(())
 }
 
 /// Read the PID file, send SIGUSR1 to that process, exit.

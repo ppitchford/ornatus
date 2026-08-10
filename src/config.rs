@@ -1,4 +1,4 @@
-// ornatus — solar-gradient wallpaper and theme daemon
+// ornatus — Wayland wallpaper and theme daemon
 // Copyright (C) 2026 Philipp Pitchford
 //
 // This program is free software: you can redistribute it and/or modify
@@ -74,28 +74,61 @@ fn xdg_runtime_dir() -> Result<PathBuf> {
     Ok(PathBuf::from(value))
 }
 
+/// `$HOME`, or `/` if it somehow isn't set. Only used to build defaults, which
+/// a present config file overrides anyway.
+fn home() -> PathBuf {
+    env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/"))
+}
+
+/// Default wallpaper path. Also serves as the serde default, so a config file
+/// written before the wallpaper became a single image still loads.
+fn default_wallpaper() -> PathBuf {
+    home().join("Pictures/wallpapers/watchtower.jpg")
+}
+
+fn default_theme_dir() -> PathBuf {
+    home().join(".config/theme")
+}
+
+fn default_refresh_interval_secs() -> u64 {
+    60
+}
+
 /// User-tunable configuration, loaded from `config.toml`.
+///
+/// Every field carries a serde default: the daemon has to keep starting when
+/// the config file predates a field, since it runs from the compositor's
+/// startup and a parse failure means no wallpaper at all.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
-    /// Directory containing the 16 gradient frames (`00.jpg` … `15.jpg`).
-    pub wallpaper_dir: PathBuf,
+    /// The wallpaper image. Decoded once per output at its pixel dimensions,
+    /// scaled to cover, and centre-cropped. JPEG only — see the `image`
+    /// feature list in `Cargo.toml`.
+    #[serde(default = "default_wallpaper")]
+    pub wallpaper: PathBuf,
 
     /// Directory holding the `dark/` and `light/` theme bundles and the
     /// `current` marker file watched by other tools (Quickshell, Neovim).
+    #[serde(default = "default_theme_dir")]
     pub theme_dir: PathBuf,
 
     /// Source of geographic coordinates.
+    #[serde(default)]
     pub location: LocationConfig,
 
-    /// How often the daemon recomputes the current blend and redraws.
+    /// How often the daemon rechecks the sun for a day/night crossing.
+    #[serde(default = "default_refresh_interval_secs")]
     pub refresh_interval_secs: u64,
 }
 
 /// Where the daemon gets its latitude and longitude.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(tag = "source", rename_all = "lowercase")]
 pub enum LocationConfig {
     /// Detect via IP geolocation, cached daily and refreshed on suspend/resume.
+    #[default]
     Auto,
     /// Use these coordinates verbatim. Useful for VPN users or fixed setups.
     Fixed { lat: f64, lon: f64 },
@@ -103,14 +136,11 @@ pub enum LocationConfig {
 
 impl Default for Config {
     fn default() -> Self {
-        let home = env::var("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/"));
         Self {
-            wallpaper_dir:         home.join("Pictures/wallpapers/solar-gradients"),
-            theme_dir:             home.join(".config/theme"),
-            location:              LocationConfig::Auto,
-            refresh_interval_secs: 60,
+            wallpaper:             default_wallpaper(),
+            theme_dir:             default_theme_dir(),
+            location:              LocationConfig::default(),
+            refresh_interval_secs: default_refresh_interval_secs(),
         }
     }
 }

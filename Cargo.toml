@@ -2,7 +2,7 @@
 name        = "ornatus"
 version     = "0.1.0"
 edition     = "2024"
-description = "Wayland-native solar-gradient wallpaper and theme daemon for wlroots compositors"
+description = "Wayland-native wallpaper and theme daemon for wlroots compositors"
 license     = "GPL-3.0-or-later"
 repository  = "https://github.com/ppitchford/ornatus"
 
@@ -20,7 +20,6 @@ image = { version = "0.25", default-features = false, features = ["jpeg"] }
 # Time and sun math — local sunrise/sunset, no network
 chrono  = { version = "0.4", features = ["serde"] }
 sunrise = "3"
-sun = "0.3"
 
 # HTTP + JSON — only for IP geolocation; blocking ureq keeps us off async runtimes
 ureq       = { version = "2", default-features = false, features = ["tls", "json"] }
