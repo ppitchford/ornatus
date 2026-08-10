@@ -317,7 +317,12 @@ impl OutputHandler for WaylandApp {
         self.create_surface_for(output, qh);
     }
 
-    fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {}
+    fn update_output(&mut self, _: &Connection, qh: &QueueHandle<Self>, output: wl_output::WlOutput) {
+        // Recovery path: if `new_output` fired before this output's info was
+        // populated, `create_surface_for` bailed out and nothing retried.
+        // It's idempotent, so this is a no-op when the surface already exists.
+        self.create_surface_for(output, qh);
+    }
 
     fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, output: wl_output::WlOutput) {
         let before = self.surfaces.len();
