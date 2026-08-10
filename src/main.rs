@@ -337,13 +337,36 @@ impl PidFile {
 
 impl Drop for PidFile {
     fn drop(&mut self) {
-        match fs::remove_file(&self.path) {
-            Ok(()) => info!(path = %self.path.display(), "removed PID file"),
+        // Only unlink if the file still names *this* process. A dying instance
+        // can otherwise race a newly-started one and delete its PID file.
+        let me = std::process::id();
+        match fs::read_to_string(&self.path) {
+            Ok(contents) => match contents.trim().parse::<u32>() {
+                Ok(pid) if pid == me => match fs::remove_file(&self.path) {
+                    Ok(()) => info!(path = %self.path.display(), "removed PID file"),
+                    Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+                    Err(err) => warn!(
+                        error = %err,
+                        path  = %self.path.display(),
+                        "failed to remove PID file",
+                    ),
+                },
+                Ok(pid) => info!(
+                    path  = %self.path.display(),
+                    owner = pid,
+                    "PID file belongs to another instance, leaving it",
+                ),
+                Err(err) => warn!(
+                    error = %err,
+                    path  = %self.path.display(),
+                    "PID file contents unparseable, leaving it",
+                ),
+            },
             Err(err) if err.kind() == io::ErrorKind::NotFound => {}
             Err(err) => warn!(
                 error = %err,
                 path  = %self.path.display(),
-                "failed to remove PID file",
+                "failed to read PID file",
             ),
         }
     }
