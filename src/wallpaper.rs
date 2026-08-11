@@ -63,6 +63,8 @@ impl Wallpaper {
         }
 
         let start = Instant::now();
+        // `image` is built with jpeg support only; a PNG or WebP configured as
+        // `wallpaper` fails here, and the error names the path.
         let img = image::open(&self.path).with_context(|| {
             format!("decoding wallpaper {} (JPEG only)", self.path.display())
         })?;
