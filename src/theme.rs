@@ -61,7 +61,6 @@ const MAPPINGS: &[Mapping] = &[
     Mapping { source_name: "kitty.conf", dest_relative: "kitty/current-theme.conf" },
     Mapping { source_name: "fuzzel.ini", dest_relative: "fuzzel/fuzzel.ini" },
     Mapping { source_name: "mako.conf",  dest_relative: "mako/config" },
-    Mapping { source_name: "mango.conf", dest_relative: "mango/theme.conf" },
 ];
 
 pub struct ThemeManager {
