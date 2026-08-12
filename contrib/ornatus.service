@@ -10,7 +10,7 @@
 # WAYLAND_DISPLAY` after the compositor starts.
 
 [Unit]
-Description=ornatus solar-gradient wallpaper and theme daemon
+Description=ornatus wallpaper and theme daemon
 Documentation=https://github.com/ppitchford/ornatus
 PartOf=graphical-session.target
 After=graphical-session.target

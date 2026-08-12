@@ -1,4 +1,4 @@
-// ornatus — solar-gradient wallpaper and theme daemon
+// ornatus — wallpaper and theme daemon
 // Copyright (C) 2026 Philipp Pitchford
 //
 // This program is free software: you can redistribute it and/or modify
