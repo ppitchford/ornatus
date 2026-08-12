@@ -85,7 +85,7 @@ fn home() -> PathBuf {
 /// Default wallpaper path. Also serves as the serde default, so a config file
 /// written before the wallpaper became a single image still loads.
 fn default_wallpaper() -> PathBuf {
-    home().join("Pictures/wallpapers/watchtower.jpg")
+    home().join("Pictures/wallpapers/watchtower-wide.jpg")
 }
 
 fn default_theme_dir() -> PathBuf {
@@ -110,7 +110,7 @@ pub struct Config {
     pub wallpaper: PathBuf,
 
     /// Directory holding the `dark/` and `light/` theme bundles and the
-    /// `current` marker file watched by other tools (Quickshell, Neovim).
+    /// `current` marker file watched by other tools (Neovim).
     #[serde(default = "default_theme_dir")]
     pub theme_dir: PathBuf,
 
