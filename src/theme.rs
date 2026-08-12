@@ -80,7 +80,7 @@ impl ThemeManager {
         let changed        = marker_changed || links_changed;
 
         if changed {
-            self.signal_reloads();
+            self.signal_reloads(theme);
             info!(theme = theme.name(), "theme applied");
         } else {
             debug!(theme = theme.name(), "theme already current, no changes");
@@ -145,11 +145,22 @@ impl ThemeManager {
         Ok(changed)
     }
 
-    fn signal_reloads(&self) {
+    fn signal_reloads(&self, theme: Theme) {
         // Best-effort: apps may not be running, errors are logged at debug.
         run_quiet("pkill",   &["-SIGUSR1", "kitty"]);
         run_quiet("makoctl", &["reload"]);
-        run_quiet("mmsg",    &["-d", "reload_config"]);
+        // Chromium and Electron apps (Helium, Obsidian) follow the portal's
+        // color-scheme rather than any config file. xdg-desktop-portal-gtk
+        // reads it from here and broadcasts SettingChanged; they repaint live.
+        run_quiet("gsettings", &[
+            "set",
+            "org.gnome.desktop.interface",
+            "color-scheme",
+            match theme {
+                Theme::Dark  => "prefer-dark",
+                Theme::Light => "prefer-light",
+            },
+        ]);
     }
 }
 
