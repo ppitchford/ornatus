@@ -41,3 +41,23 @@ The fix — a bounded readiness loop in main, plus sweep_unattached as a
 backstop — was derived from code reading. No failing boot was ever captured.
 The warn! in sweep_unattached is the instrument that will show whether the
 reactive path is sufficient in practice.
+
+## Colour scheme is asserted on change, never reconciled
+
+Applying a theme is idempotent: if the marker and the symlinks already agree,
+nothing is written and no signals are sent. The `org.gnome.desktop.interface
+color-scheme` GSetting is therefore asserted only when the theme *changes*, so a
+key that is wrong for any other reason stays wrong until the next sunrise or
+sunset. Setting it by hand puts the desktop and the browsers in disagreement and
+ornatus will not correct it.
+
+A reconcile-on-apply in `theme.rs` closes this, and it is a small change: assert
+the key whenever apply runs rather than only on the change branch.
+
+The same shape shows up twice more, so it is worth naming as a class — the
+daemon sets state but never reconciles it. `Config::load_or_create` is called
+once at `main.rs:98`, and SIGUSR1 runs only the sun-and-theme path, so
+`--refresh` does not reload `config.toml`. The wallpaper is likewise redrawn
+only when a surface is configured or resized, never on the refresh tick, which
+is why a wallpaper change needs the daemon restarted and why the failure is
+quiet: the refresh succeeds and logs normally while rendering nothing new.
