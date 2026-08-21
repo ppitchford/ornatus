@@ -99,7 +99,7 @@ On first run a default config is written to
 `$XDG_CONFIG_HOME/ornatus/config.toml` (falling back to `~/.config`):
 
 ```toml
-wallpaper             = "~/Pictures/wallpapers/watchtower-wide.jpg"
+wallpaper             = "~/pictures/wallpapers/watchtower-wide.jpg"
 theme_dir             = "~/.config/theme"
 refresh_interval_secs = 60
 
