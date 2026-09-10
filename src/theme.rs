@@ -74,6 +74,10 @@ const MAPPINGS: &[Mapping] = &[
         source_name: "mako.conf",
         dest_relative: "mako/config",
     },
+    Mapping {
+        source_name: "helix.toml",
+        dest_relative: "helix/themes/current.toml",
+    },
 ];
 
 pub struct ThemeManager {
@@ -162,12 +166,9 @@ impl ThemeManager {
     }
 
     fn signal_reloads(&self, theme: Theme) {
-        // Best-effort: apps may not be running, errors are logged at debug.
         run_quiet("pkill", &["-SIGUSR1", "kitty"]);
+        run_quiet("pkill", &["-SIGUSR1", "hx"]);
         run_quiet("makoctl", &["reload"]);
-        // Chromium and Electron apps (Helium, Obsidian) follow the portal's
-        // color-scheme rather than any config file. xdg-desktop-portal-gtk
-        // reads it from here and broadcasts SettingChanged; they repaint live.
         run_quiet(
             "gsettings",
             &[
