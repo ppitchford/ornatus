@@ -38,46 +38,62 @@ impl Theme {
     pub fn name(self) -> &'static str {
         match self {
             Theme::Light => "light",
-            Theme::Dark  => "dark",
+            Theme::Dark => "dark",
         }
     }
 
     /// Map a daytime/nighttime signal to a theme variant.
     pub fn from_is_daytime(is_daytime: bool) -> Self {
-        if is_daytime { Theme::Light } else { Theme::Dark }
+        if is_daytime {
+            Theme::Light
+        } else {
+            Theme::Dark
+        }
     }
 }
 
 /// One symlink mapping: a filename inside the theme bundle, and its
 /// destination relative to the user's config directory.
 struct Mapping {
-    source_name:   &'static str,
+    source_name: &'static str,
     dest_relative: &'static str,
 }
 
 /// Theme bundle file → per-app symlink destination. Hardcoded because these
 /// reflect application config conventions, not user preferences.
 const MAPPINGS: &[Mapping] = &[
-    Mapping { source_name: "kitty.conf", dest_relative: "kitty/current-theme.conf" },
-    Mapping { source_name: "fuzzel.ini", dest_relative: "fuzzel/fuzzel.ini" },
-    Mapping { source_name: "mako.conf",  dest_relative: "mako/config" },
+    Mapping {
+        source_name: "kitty.conf",
+        dest_relative: "kitty/current-theme.conf",
+    },
+    Mapping {
+        source_name: "fuzzel.ini",
+        dest_relative: "fuzzel/fuzzel.ini",
+    },
+    Mapping {
+        source_name: "mako.conf",
+        dest_relative: "mako/config",
+    },
 ];
 
 pub struct ThemeManager {
-    theme_dir:  PathBuf,  // ~/.config/theme/
-    config_dir: PathBuf,  // ~/.config/
+    theme_dir: PathBuf,  // ~/.config/theme/
+    config_dir: PathBuf, // ~/.config/
 }
 
 impl ThemeManager {
     pub fn new(theme_dir: PathBuf, config_dir: PathBuf) -> Self {
-        Self { theme_dir, config_dir }
+        Self {
+            theme_dir,
+            config_dir,
+        }
     }
 
     /// Apply the theme, returning whether anything actually changed.
     pub fn apply(&self, theme: Theme) -> Result<bool> {
         let marker_changed = self.write_marker(theme)?;
-        let links_changed  = self.update_symlinks(theme)?;
-        let changed        = marker_changed || links_changed;
+        let links_changed = self.update_symlinks(theme)?;
+        let changed = marker_changed || links_changed;
 
         if changed {
             self.signal_reloads(theme);
@@ -89,7 +105,7 @@ impl ThemeManager {
     }
 
     fn write_marker(&self, theme: Theme) -> Result<bool> {
-        let marker      = self.theme_dir.join("current");
+        let marker = self.theme_dir.join("current");
         let new_content = format!("{}\n", theme.name());
 
         if fs::read_to_string(&marker).ok().as_deref() == Some(new_content.as_str()) {
@@ -107,7 +123,7 @@ impl ThemeManager {
     }
 
     fn update_symlinks(&self, theme: Theme) -> Result<bool> {
-        let bundle      = self.theme_dir.join(theme.name());
+        let bundle = self.theme_dir.join(theme.name());
         let mut changed = false;
 
         for m in MAPPINGS {
@@ -147,20 +163,23 @@ impl ThemeManager {
 
     fn signal_reloads(&self, theme: Theme) {
         // Best-effort: apps may not be running, errors are logged at debug.
-        run_quiet("pkill",   &["-SIGUSR1", "kitty"]);
+        run_quiet("pkill", &["-SIGUSR1", "kitty"]);
         run_quiet("makoctl", &["reload"]);
         // Chromium and Electron apps (Helium, Obsidian) follow the portal's
         // color-scheme rather than any config file. xdg-desktop-portal-gtk
         // reads it from here and broadcasts SettingChanged; they repaint live.
-        run_quiet("gsettings", &[
-            "set",
-            "org.gnome.desktop.interface",
-            "color-scheme",
-            match theme {
-                Theme::Dark  => "prefer-dark",
-                Theme::Light => "prefer-light",
-            },
-        ]);
+        run_quiet(
+            "gsettings",
+            &[
+                "set",
+                "org.gnome.desktop.interface",
+                "color-scheme",
+                match theme {
+                    Theme::Dark => "prefer-dark",
+                    Theme::Light => "prefer-light",
+                },
+            ],
+        );
     }
 }
 

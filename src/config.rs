@@ -32,21 +32,21 @@ use tracing::info;
 /// (XDG dirs, HOME) rather than from user input.
 #[derive(Debug, Clone)]
 pub struct Paths {
-    pub config_dir:     PathBuf,
-    pub config_file:    PathBuf,
+    pub config_dir: PathBuf,
+    pub config_file: PathBuf,
     pub location_cache: PathBuf,
-    pub pid_file:       PathBuf,
+    pub pid_file: PathBuf,
 }
 
 impl Paths {
     pub fn resolve() -> Result<Self> {
-        let config_dir  = xdg_dir("XDG_CONFIG_HOME", ".config")?;
-        let cache_dir   = xdg_dir("XDG_CACHE_HOME",  ".cache")?;
+        let config_dir = xdg_dir("XDG_CONFIG_HOME", ".config")?;
+        let cache_dir = xdg_dir("XDG_CACHE_HOME", ".cache")?;
         let runtime_dir = xdg_runtime_dir()?;
         Ok(Self {
-            config_file:    config_dir.join("ornatus/config.toml"),
+            config_file: config_dir.join("ornatus/config.toml"),
             location_cache: cache_dir.join("ornatus/location.json"),
-            pid_file:       runtime_dir.join("ornatus.pid"),
+            pid_file: runtime_dir.join("ornatus.pid"),
             config_dir,
         })
     }
@@ -137,9 +137,9 @@ pub enum LocationConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            wallpaper:             default_wallpaper(),
-            theme_dir:             default_theme_dir(),
-            location:              LocationConfig::default(),
+            wallpaper: default_wallpaper(),
+            theme_dir: default_theme_dir(),
+            location: LocationConfig::default(),
             refresh_interval_secs: default_refresh_interval_secs(),
         }
     }
@@ -160,8 +160,8 @@ impl Config {
                     format!("creating config directory at {}", parent.display())
                 })?;
             }
-            let text = toml::to_string_pretty(&config)
-                .context("serialising default config to TOML")?;
+            let text =
+                toml::to_string_pretty(&config).context("serialising default config to TOML")?;
             fs::write(path, &text)
                 .with_context(|| format!("writing default config to {}", path.display()))?;
             info!("wrote default config to {}", path.display());

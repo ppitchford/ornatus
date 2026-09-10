@@ -31,11 +31,11 @@
 //! initial theme, connect to the compositor, then run a calloop event loop that
 //! services Wayland events, a periodic refresh timer, and Unix signals.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use calloop::{
+    EventLoop,
     signals::{Signal, Signals},
     timer::{TimeoutAction, Timer},
-    EventLoop,
 };
 use calloop_wayland_source::WaylandSource;
 use chrono::Utc;
@@ -47,8 +47,8 @@ use std::{
 };
 use tracing::{info, warn};
 use wayland_client::{
-    globals::{registry_queue_init, GlobalList},
     Connection, EventQueue,
+    globals::{GlobalList, registry_queue_init},
 };
 
 mod config;
@@ -82,7 +82,7 @@ fn main() -> Result<()> {
         )
         .init();
 
-    let cli   = Cli::parse();
+    let cli = Cli::parse();
     let paths = Paths::resolve()?;
 
     if cli.refresh {
@@ -99,7 +99,7 @@ fn main() -> Result<()> {
     info!(?config, "configuration loaded");
 
     let resolver = LocationResolver::new(config.location.clone(), paths.location_cache.clone());
-    let coords   = resolver.resolve()?;
+    let coords = resolver.resolve()?;
     info!(lat = coords.lat, lon = coords.lon, "location resolved");
 
     let now = Utc::now();
@@ -108,7 +108,7 @@ fn main() -> Result<()> {
     // time; its date is the solar day we're currently in.
     let lon_offset = chrono::Duration::seconds((coords.lon * 240.0) as i64);
     let local_date = (now + lon_offset).date_naive();
-    let sunday     = SunDay::compute(coords, local_date)?;
+    let sunday = SunDay::compute(coords, local_date)?;
     info!(
         sunrise    = %sunday.sunrise.format("%H:%M:%SZ"),
         sunset     = %sunday.sunset.format("%H:%M:%SZ"),
@@ -118,7 +118,7 @@ fn main() -> Result<()> {
     );
 
     let is_daytime = sunday.is_daytime(now);
-    let theme_mgr  = ThemeManager::new(config.theme_dir.clone(), paths.config_dir.clone());
+    let theme_mgr = ThemeManager::new(config.theme_dir.clone(), paths.config_dir.clone());
     theme_mgr.apply(Theme::from_is_daytime(is_daytime))?;
 
     let wallpaper = Wallpaper::new(config.wallpaper.clone());
@@ -149,9 +149,9 @@ fn main() -> Result<()> {
     await_outputs(&mut event_queue, &mut app, &qh, OUTPUT_STARTUP_TIMEOUT)?;
 
     // ── Event loop ──────────────────────────────────────────────────────────
-    let mut event_loop: EventLoop<WaylandApp> = EventLoop::try_new()
-        .context("creating calloop event loop")?;
-    let handle      = event_loop.handle();
+    let mut event_loop: EventLoop<WaylandApp> =
+        EventLoop::try_new().context("creating calloop event loop")?;
+    let handle = event_loop.handle();
     let loop_signal = event_loop.get_signal();
 
     // Periodic refresh: recompute the sun and switch the theme on day/night
@@ -294,11 +294,11 @@ fn required_globals_present(globals: &GlobalList) -> bool {
 /// anything still unattached.
 fn await_outputs(
     event_queue: &mut EventQueue<WaylandApp>,
-    app:         &mut WaylandApp,
-    qh:          &wayland_client::QueueHandle<WaylandApp>,
-    timeout:     Duration,
+    app: &mut WaylandApp,
+    qh: &wayland_client::QueueHandle<WaylandApp>,
+    timeout: Duration,
 ) -> Result<()> {
-    let start    = Instant::now();
+    let start = Instant::now();
     let deadline = start + timeout;
 
     loop {
@@ -306,7 +306,7 @@ fn await_outputs(
 
         if app.surface_count() > 0 && app.unattached_outputs() == 0 {
             info!(
-                outputs    = app.surface_count(),
+                outputs = app.surface_count(),
                 elapsed_ms = start.elapsed().as_millis(),
                 "all advertised outputs attached",
             );
@@ -315,7 +315,7 @@ fn await_outputs(
 
         if Instant::now() >= deadline {
             warn!(
-                attached   = app.surface_count(),
+                attached = app.surface_count(),
                 unattached = app.unattached_outputs(),
                 elapsed_ms = start.elapsed().as_millis(),
                 "timed out waiting for outputs; sweeping",
@@ -339,15 +339,18 @@ fn await_outputs(
 fn send_refresh(pid_file: &Path) -> Result<()> {
     let text = fs::read_to_string(pid_file).map_err(|e| match e.kind() {
         io::ErrorKind::NotFound => {
-            anyhow!("no running ornatus instance (no PID file at {})", pid_file.display())
+            anyhow!(
+                "no running ornatus instance (no PID file at {})",
+                pid_file.display()
+            )
         }
-        _ => anyhow::Error::new(e)
-            .context(format!("reading PID file at {}", pid_file.display())),
+        _ => anyhow::Error::new(e).context(format!("reading PID file at {}", pid_file.display())),
     })?;
 
-    let pid: i32 = text.trim().parse().with_context(|| {
-        format!("parsing PID from {}", pid_file.display())
-    })?;
+    let pid: i32 = text
+        .trim()
+        .parse()
+        .with_context(|| format!("parsing PID from {}", pid_file.display()))?;
 
     // SAFETY: libc::kill is safe to call with any pid/signal; we check the
     // return value and translate errno into an anyhow error.

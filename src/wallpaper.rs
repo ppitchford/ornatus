@@ -23,7 +23,7 @@
 //! (~300ms for a 4K JPEG) and happens only when a surface is first configured
 //! or changes size, not on the refresh tick.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use image::imageops::FilterType;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -65,23 +65,26 @@ impl Wallpaper {
         let start = Instant::now();
         // `image` is built with jpeg support only; a PNG or WebP configured as
         // `wallpaper` fails here, and the error names the path.
-        let img = image::open(&self.path).with_context(|| {
-            format!("decoding wallpaper {} (JPEG only)", self.path.display())
-        })?;
+        let img = image::open(&self.path)
+            .with_context(|| format!("decoding wallpaper {} (JPEG only)", self.path.display()))?;
 
-        let (crop_x, crop_y, crop_w, crop_h) =
-            cover_crop(img.width(), img.height(), width, height);
+        let (crop_x, crop_y, crop_w, crop_h) = cover_crop(img.width(), img.height(), width, height);
 
         // Triangle is several times faster than Lanczos3 and the difference is
         // invisible when downscaling a photograph to screen resolution.
-        let scaled = img
-            .crop_imm(crop_x, crop_y, crop_w, crop_h)
-            .resize_exact(width, height, FilterType::Triangle);
+        let scaled = img.crop_imm(crop_x, crop_y, crop_w, crop_h).resize_exact(
+            width,
+            height,
+            FilterType::Triangle,
+        );
         let rgba = scaled.to_rgba8();
 
         // wl_shm Argb8888 is native-endian, so on little-endian machines the
         // byte order in memory is B, G, R, A.
-        for (dst, src) in output.chunks_exact_mut(4).zip(rgba.as_raw().chunks_exact(4)) {
+        for (dst, src) in output
+            .chunks_exact_mut(4)
+            .zip(rgba.as_raw().chunks_exact(4))
+        {
             dst[0] = src[2];
             dst[1] = src[1];
             dst[2] = src[0];
@@ -153,8 +156,14 @@ mod tests {
         ] {
             let (x, y, w, h) = cover_crop(sw, sh, dw, dh);
             assert!(w >= 1 && h >= 1, "empty crop for {sw}x{sh} -> {dw}x{dh}");
-            assert!(x + w <= sw, "crop overflows width for {sw}x{sh} -> {dw}x{dh}");
-            assert!(y + h <= sh, "crop overflows height for {sw}x{sh} -> {dw}x{dh}");
+            assert!(
+                x + w <= sw,
+                "crop overflows width for {sw}x{sh} -> {dw}x{dh}"
+            );
+            assert!(
+                y + h <= sh,
+                "crop overflows height for {sw}x{sh} -> {dw}x{dh}"
+            );
         }
     }
 }

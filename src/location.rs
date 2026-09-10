@@ -42,15 +42,15 @@ pub struct Coords {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CachedLocation {
     fetched_at: DateTime<Utc>,
-    lat:        f64,
-    lon:        f64,
+    lat: f64,
+    lon: f64,
 }
 
 /// Resolves coordinates and manages the on-disk cache.
 pub struct LocationResolver {
-    source:     LocationConfig,
+    source: LocationConfig,
     cache_path: PathBuf,
-    ttl:        ChronoDuration,
+    ttl: ChronoDuration,
 }
 
 impl LocationResolver {
@@ -90,7 +90,10 @@ impl LocationResolver {
                             error = %err,
                             "forced fetch failed, falling back to stale cache",
                         );
-                        Ok(Coords { lat: c.lat, lon: c.lon })
+                        Ok(Coords {
+                            lat: c.lat,
+                            lon: c.lon,
+                        })
                     }
                     None => Err(err),
                 },
@@ -111,7 +114,10 @@ impl LocationResolver {
                     age_secs = age.num_seconds(),
                     "using cached location"
                 );
-                return Ok(Coords { lat: c.lat, lon: c.lon });
+                return Ok(Coords {
+                    lat: c.lat,
+                    lon: c.lon,
+                });
             }
         }
 
@@ -121,7 +127,10 @@ impl LocationResolver {
             Err(err) => match cached {
                 Some(c) => {
                     warn!(error = %err, "fetch failed, falling back to stale cache");
-                    Ok(Coords { lat: c.lat, lon: c.lon })
+                    Ok(Coords {
+                        lat: c.lat,
+                        lon: c.lon,
+                    })
                 }
                 None => Err(err),
             },
@@ -138,23 +147,24 @@ impl LocationResolver {
 
         let cached = CachedLocation {
             fetched_at: Utc::now(),
-            lat:        coords.lat,
-            lon:        coords.lon,
+            lat: coords.lat,
+            lon: coords.lon,
         };
 
         if let Some(parent) = self.cache_path.parent() {
-            fs::create_dir_all(parent).with_context(|| {
-                format!("creating cache directory at {}", parent.display())
-            })?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("creating cache directory at {}", parent.display()))?;
         }
 
-        let text = serde_json::to_string_pretty(&cached)
-            .context("serialising cached location")?;
-        fs::write(&self.cache_path, &text).with_context(|| {
-            format!("writing location cache to {}", self.cache_path.display())
-        })?;
+        let text = serde_json::to_string_pretty(&cached).context("serialising cached location")?;
+        fs::write(&self.cache_path, &text)
+            .with_context(|| format!("writing location cache to {}", self.cache_path.display()))?;
 
-        info!(lat = coords.lat, lon = coords.lon, "fetched and cached new location");
+        info!(
+            lat = coords.lat,
+            lon = coords.lon,
+            "fetched and cached new location"
+        );
         Ok(coords)
     }
 }
@@ -162,7 +172,7 @@ impl LocationResolver {
 /// Subset of ipapi.co's JSON response that we care about.
 #[derive(Debug, Deserialize)]
 struct IpApiResponse {
-    latitude:  f64,
+    latitude: f64,
     longitude: f64,
 }
 

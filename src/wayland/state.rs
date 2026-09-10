@@ -37,19 +37,19 @@ use smithay_client_toolkit::{
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     shell::{
+        WaylandSurface,
         wlr_layer::{
             Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
             LayerSurfaceConfigure,
         },
-        WaylandSurface,
     },
-    shm::{slot::SlotPool, Shm, ShmHandler},
+    shm::{Shm, ShmHandler, slot::SlotPool},
 };
 use tracing::{debug, info, warn};
 use wayland_client::{
+    Connection, QueueHandle,
     globals::GlobalList,
     protocol::{wl_output, wl_shm, wl_surface},
-    Connection, QueueHandle,
 };
 
 use crate::location::{Coords, LocationResolver};
@@ -59,37 +59,37 @@ use crate::wallpaper::Wallpaper;
 
 /// Application-wide Wayland state.
 pub struct WaylandApp {
-    registry_state:   RegistryState,
-    output_state:     OutputState,
-    compositor:       CompositorState,
-    layer_shell:      LayerShell,
-    shm:              Shm,
-    surfaces:         Vec<OutputSurface>,
-    wallpaper:        Wallpaper,
-    coords:           Coords,
-    theme_mgr:        ThemeManager,
-    last_is_daytime:  bool,
-    resolver:         LocationResolver,
+    registry_state: RegistryState,
+    output_state: OutputState,
+    compositor: CompositorState,
+    layer_shell: LayerShell,
+    shm: Shm,
+    surfaces: Vec<OutputSurface>,
+    wallpaper: Wallpaper,
+    coords: Coords,
+    theme_mgr: ThemeManager,
+    last_is_daytime: bool,
+    resolver: LocationResolver,
     refresh_interval: ChronoDuration,
-    last_refresh_at:  DateTime<Utc>,
+    last_refresh_at: DateTime<Utc>,
 }
 
 /// One per attached output.
 struct OutputSurface {
-    output:     wl_output::WlOutput,
-    layer:      LayerSurface,
+    output: wl_output::WlOutput,
+    layer: LayerSurface,
     /// Created at first draw, sized to exactly one buffer. `SlotPool` grows
     /// itself by doubling if it ever needs more, so there is no reason to
     /// reserve ahead.
-    pool:       Option<SlotPool>,
+    pool: Option<SlotPool>,
     /// Size the compositor asked for, before scaling.
-    logical_w:  u32,
-    logical_h:  u32,
-    scale:      i32,
+    logical_w: u32,
+    logical_h: u32,
+    scale: i32,
     configured: bool,
     /// Pixel dimensions of the buffer currently attached, if any. Guards
     /// against re-decoding the image on a configure that changed nothing.
-    painted:    Option<(u32, u32)>,
+    painted: Option<(u32, u32)>,
 }
 
 impl OutputSurface {
@@ -105,36 +105,35 @@ impl OutputSurface {
 impl WaylandApp {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        globals:               &GlobalList,
-        qh:                    &QueueHandle<Self>,
-        wallpaper:             Wallpaper,
-        coords:                Coords,
-        theme_mgr:             ThemeManager,
-        is_daytime:            bool,
-        resolver:              LocationResolver,
+        globals: &GlobalList,
+        qh: &QueueHandle<Self>,
+        wallpaper: Wallpaper,
+        coords: Coords,
+        theme_mgr: ThemeManager,
+        is_daytime: bool,
+        resolver: LocationResolver,
         refresh_interval_secs: u64,
     ) -> Result<Self> {
-        let compositor  = CompositorState::bind(globals, qh)
-            .context("wl_compositor not advertised")?;
+        let compositor =
+            CompositorState::bind(globals, qh).context("wl_compositor not advertised")?;
         let layer_shell = LayerShell::bind(globals, qh)
             .context("zwlr_layer_shell_v1 not advertised — non-wlroots compositor?")?;
-        let shm         = Shm::bind(globals, qh)
-            .context("wl_shm not advertised")?;
+        let shm = Shm::bind(globals, qh).context("wl_shm not advertised")?;
 
         Ok(Self {
             registry_state: RegistryState::new(globals),
-            output_state:   OutputState::new(globals, qh),
+            output_state: OutputState::new(globals, qh),
             compositor,
             layer_shell,
             shm,
-            surfaces:        Vec::new(),
+            surfaces: Vec::new(),
             wallpaper,
             coords,
             theme_mgr,
-            last_is_daytime:  is_daytime,
+            last_is_daytime: is_daytime,
             resolver,
             refresh_interval: ChronoDuration::seconds(refresh_interval_secs as i64),
-            last_refresh_at:  Utc::now(),
+            last_refresh_at: Utc::now(),
         })
     }
 
@@ -202,7 +201,7 @@ impl WaylandApp {
         // Recompute today's sun events for the local solar date.
         let lon_offset = ChronoDuration::seconds((self.coords.lon * 240.0) as i64);
         let local_date = (now + lon_offset).date_naive();
-        let sunday     = SunDay::compute(self.coords, local_date)?;
+        let sunday = SunDay::compute(self.coords, local_date)?;
 
         // Theme switch on day/night crossings only.
         let is_daytime = sunday.is_daytime(now);
@@ -251,7 +250,7 @@ impl WaylandApp {
         };
 
         let wl_surface = self.compositor.create_surface(qh);
-        let layer      = self.layer_shell.create_layer_surface(
+        let layer = self.layer_shell.create_layer_surface(
             qh,
             wl_surface,
             Layer::Background,
@@ -263,8 +262,8 @@ impl WaylandApp {
         layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
         layer.set_exclusive_zone(-1);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
-        layer.set_size(0, 0);  // compositor decides
-        layer.commit();        // initial commit elicits a configure event
+        layer.set_size(0, 0); // compositor decides
+        layer.commit(); // initial commit elicits a configure event
 
         info!(
             output = %display_name(&info),
@@ -275,12 +274,12 @@ impl WaylandApp {
         self.surfaces.push(OutputSurface {
             output,
             layer,
-            pool:       None,
-            logical_w:  0,
-            logical_h:  0,
-            scale:      info.scale_factor,
+            pool: None,
+            logical_w: 0,
+            logical_h: 0,
+            scale: info.scale_factor,
             configured: false,
-            painted:    None,
+            painted: None,
         });
     }
 
@@ -316,10 +315,15 @@ impl WaylandApp {
                 }
             }
         }
-        let Some(pool) = surface.pool.as_mut() else { return };
+        let Some(pool) = surface.pool.as_mut() else {
+            return;
+        };
 
         let (buffer, canvas) = match pool.create_buffer(
-            width as i32, height as i32, stride, wl_shm::Format::Argb8888,
+            width as i32,
+            height as i32,
+            stride,
+            wl_shm::Format::Argb8888,
         ) {
             Ok(pair) => pair,
             Err(err) => {
@@ -350,19 +354,28 @@ impl WaylandApp {
 /// A human-readable name for an output: the connector name where the
 /// compositor supplies one, else the global's numeric id.
 fn display_name(info: &OutputInfo) -> String {
-    info.name.clone().unwrap_or_else(|| format!("output_{}", info.id))
+    info.name
+        .clone()
+        .unwrap_or_else(|| format!("output_{}", info.id))
 }
 
 // ── Handlers ────────────────────────────────────────────────────────────────
 
 impl OutputHandler for WaylandApp {
-    fn output_state(&mut self) -> &mut OutputState { &mut self.output_state }
+    fn output_state(&mut self) -> &mut OutputState {
+        &mut self.output_state
+    }
 
     fn new_output(&mut self, _: &Connection, qh: &QueueHandle<Self>, output: wl_output::WlOutput) {
         self.create_surface_for(output, qh);
     }
 
-    fn update_output(&mut self, _: &Connection, qh: &QueueHandle<Self>, output: wl_output::WlOutput) {
+    fn update_output(
+        &mut self,
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
+    ) {
         // A scale change alters the pixel size without a new configure, so the
         // buffer has to be redrawn or the wallpaper ends up half-size.
         if let Some(info) = self.output_state.info(&output)
@@ -387,7 +400,12 @@ impl OutputHandler for WaylandApp {
         self.create_surface_for(output, qh);
     }
 
-    fn output_destroyed(&mut self, _: &Connection, _: &QueueHandle<Self>, output: wl_output::WlOutput) {
+    fn output_destroyed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        output: wl_output::WlOutput,
+    ) {
         let before = self.surfaces.len();
         self.surfaces.retain(|s| s.output != output);
         if self.surfaces.len() < before {
@@ -397,16 +415,45 @@ impl OutputHandler for WaylandApp {
 }
 
 impl CompositorHandler for WaylandApp {
-    fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: i32) {}
-    fn transform_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: wl_output::Transform) {}
+    fn scale_factor_changed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: i32,
+    ) {
+    }
+    fn transform_changed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: wl_output::Transform,
+    ) {
+    }
     fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {}
-    fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
-    fn surface_leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: &wl_output::WlOutput) {}
+    fn surface_enter(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: &wl_output::WlOutput,
+    ) {
+    }
+    fn surface_leave(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_surface::WlSurface,
+        _: &wl_output::WlOutput,
+    ) {
+    }
 }
 
 impl LayerShellHandler for WaylandApp {
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface) {
-        self.surfaces.retain(|s| s.layer.wl_surface() != layer.wl_surface());
+        self.surfaces
+            .retain(|s| s.layer.wl_surface() != layer.wl_surface());
         info!("layer surface closed by compositor");
     }
 
@@ -418,14 +465,16 @@ impl LayerShellHandler for WaylandApp {
         configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
-        let index = self.surfaces.iter()
+        let index = self
+            .surfaces
+            .iter()
             .position(|s| s.layer.wl_surface() == layer.wl_surface());
 
         if let Some(i) = index {
             let (logical_w, logical_h) = configure.new_size;
             let s = &mut self.surfaces[i];
-            s.logical_w  = logical_w.max(1);
-            s.logical_h  = logical_h.max(1);
+            s.logical_w = logical_w.max(1);
+            s.logical_h = logical_h.max(1);
             s.configured = true;
             debug!(
                 logical = ?(s.logical_w, s.logical_h),
@@ -439,11 +488,15 @@ impl LayerShellHandler for WaylandApp {
 }
 
 impl ShmHandler for WaylandApp {
-    fn shm_state(&mut self) -> &mut Shm { &mut self.shm }
+    fn shm_state(&mut self) -> &mut Shm {
+        &mut self.shm
+    }
 }
 
 impl ProvidesRegistryState for WaylandApp {
-    fn registry(&mut self) -> &mut RegistryState { &mut self.registry_state }
+    fn registry(&mut self) -> &mut RegistryState {
+        &mut self.registry_state
+    }
     registry_handlers![OutputState];
 }
 
