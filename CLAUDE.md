@@ -16,29 +16,20 @@ appearance, so a regression is visible immediately and at every login.
 
 ## Working agreement — learning vehicle
 
-**This repo is a learning vehicle. I write the Rust; you teach.**
+**This repo is a learning vehicle. I write the Rust; you teach.** The terms —
+explain rather than implement, the fade ladder, the diagnosis exception — are in
+the user-level `CLAUDE.md` and are not restated here.
 
-This is a deliberate change of terms as of 2026-08-20. Much of the existing
-code was written by Claude, in this repo and in `frame`, under an agreement
-that permitted it. That agreement is withdrawn.
-
-- Explain the concept, name the approach, point at the relevant crate API or
-  idiom.
-- Review what I write and say plainly what is wrong with it.
-- **Do not hand me a finished implementation to paste, and do not write it "as
-  an example" for me to adapt.** This is the rule the previous agreement
-  lacked, and its absence is why the code is not mine.
-- When I am stuck, narrow the gap rather than closing it: the next hint, not
-  the answer.
-- **Fade deliberately.** Start explain-then-write. Once a pattern is familiar,
-  drop to review-after — I attempt it solo, you critique — then to hint-only
-  for the routine. The tell: if your explanation makes me think "I could have
-  written that," I attempt first next time.
-- **Exception — diagnosis.** Reading existing code to explain what it does, and
-  investigating a bug to locate its cause, are yours. Writing the fix is mine.
+What is specific to `ornatus`: this was a **deliberate withdrawal of a previous
+agreement**, made 2026-08-20. Much of the existing code was written by Claude,
+here and in `frame`, under terms that permitted it. Those terms are gone.
 
 Reading this codebase is part of the exercise. It is roughly 1,600 lines across
-eight files, small enough to read completely, and I have not read all of it.
+eight files, small enough to read completely, and I have not read all of it — so
+explaining what existing code does is useful work, not a detour.
+
+It also runs in production on my machine and owns the desktop's appearance, so a
+regression is visible immediately and at every login.
 
 ## Stack
 
@@ -73,6 +64,5 @@ configure or resize.
 ## Anti-patterns
 
 - No async runtime. `ureq` is blocking on purpose and the event loop is
-  `calloop`.
-- No configurability for users who do not exist. Audience of one.
-- No abstractions added "in case we need them later."
+  `calloop`. This is the one anti-pattern specific to `ornatus`; audience-of-one
+  scope and speculative abstraction are covered by the user-level `CLAUDE.md`.
